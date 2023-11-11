@@ -1,30 +1,74 @@
-const express = require("express");
 const axios = require('axios');
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+// Replace 'YOUR_NOTION_API_KEY' and 'YOUR_DATABASE_ID' with your actual Notion API key and database ID
+const NOTION_API_KEY = 'secret_BxuXuKSNl1bPvQhgcZOUdAZUv73yXvIgy1y2Ur7QAy4';
+const DATABASE_ID = '58e22306-a3a0-4f66-9662-1867f18c365b';
 
-// Example endpoint to fetch Notion data
-app.get('/notion-data', async (req, res) => {
-  try {
-    const notionData = await axios.get('https://api.notion.com/v1/muhammadharissalman/58e22306a3a04f6696621867f18c365b?v=7a2cab1e1d3242f7a02601438c823f28', {
-      headers: {
-        Authorization: 'Bearer secret_BxuXuKSNl1bPvQhgcZOUdAZUv73yXvIgy1y2Ur7QAy4',
-        'Notion-Version': '2022-06-28',  // Replace with the latest Notion API version
-      },
-    });
-    res.json(notionData.data);
-  } catch (error) {
-    console.error('Error fetching Notion data', error);
-    res.status(500).send('Internal Server Error');
-  }
-});
+const NOTION_API_URL = 'https://api.notion.com/v1/databases/' + DATABASE_ID + '/query';
 
-// Route for the root path
-app.get('/', (req, res) => {
-  res.send('Welcome to the Notion data fetcher!');
-});
+const headers = {
+    'Authorization': `Bearer ${NOTION_API_KEY}`,
+    'Notion-Version': '2022-06-28',
+};
 
-app.listen(PORT, () => {
-  console.log(`Server is listening on ${PORT}...`);
-});
+async function fetchNotionData() {
+    try {
+        const response = await axios.post(NOTION_API_URL, {}, { headers });
+
+        return response.data.results;
+    } catch (error) {
+        throw new Error(`Error fetching Notion data: ${error.message}`);
+    }
+}
+
+function extractTextFromRichText(properties) {
+    const richTextProperties = properties['Description']?.rich_text || properties['Description']?.children || [];
+
+    if (richTextProperties.length > 0) {
+        const plainText = richTextProperties.map(textObj => textObj.text.content).join('');
+        const htmlContent = richTextProperties.map(textObj => {
+            const text = textObj.text.content;
+            const isBold = textObj.annotations.bold;
+            const formattedText = isBold ? `<b>${text}</b>` : text;
+
+            return formattedText;
+        }).join('');
+
+        return { plainText, htmlContent };
+    }
+
+    return { plainText: 'No content available', htmlContent: 'No content available' };
+}
+
+async function fetchAndFormatNotionData() {
+    try {
+        const notionItems = await fetchNotionData();
+
+        const formattedData = notionItems.map(item => {
+            const id = item.id;
+            const title = item.properties.Name.title[0]?.text.content || 'No Title';
+
+            if (item.properties.Description) {
+                const richTextContent = extractTextFromRichText(item.properties.Description);
+                return {
+                    id,
+                    title,
+                    richTextContent,
+                };
+            } else {
+                // Handle other block types if needed
+                return {
+                    id,
+                    title,
+                    richTextContent: { plainText: 'No content available', htmlContent: 'No content available' },
+                };
+            }
+        });
+
+        console.log(formattedData);
+    } catch (error) {
+        console.error(error.message);
+    }
+}
+
+fetchAndFormatNotionData();
